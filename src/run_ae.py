@@ -34,7 +34,7 @@ import modelconfig
 
 # from pytorch_pretrained_bert.modeling import BertPreTrainedModel, BertModel
 
-from bat_ae import BertForABSA
+from asc_bert_pt import BertForABSA
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt = '%m/%d/%Y %H:%M:%S',
@@ -74,6 +74,8 @@ def train(args):
     logger.info("  Batch size = %d", args.train_batch_size)
     logger.info("  Num steps = %d", num_train_steps)
     
+    print("train_features: \n", train_features[0].input_ids, train_features[0].segment_ids, train_features[0].label_id)
+    
     all_input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long)
     all_segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long)
     all_input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long)
@@ -109,10 +111,10 @@ def train(args):
 
     # model = BertForABSA.from_pretrained(modelconfig.MODEL_ARCHIVE_MAP[args.bert_model], num_labels = len(label_list), dropout=dropout, epsilon=epsilon)
     
-    # model = BertForABSA.from_pretrained(args.bert_model, num_labels = len(label_list), dropout=dropout, epsilon=epsilon)
+    model = BertForABSA.from_pretrained(args.bert_model, num_labels = len(label_list), dropout=dropout)
     
     # model = BertModel.from_pretrained(args.bert_model, dropout=dropout, epsilon=epsilon)
-    model = BertForTokenClassification.from_pretrained(args.bert_model)
+    # model = BertForTokenClassification.from_pretrained(args.bert_model)
 
     model.to(device)
     # Prepare optimizer
@@ -135,10 +137,13 @@ def train(args):
         for step, batch in enumerate(train_dataloader):
             batch = tuple(t.to(device) for t in batch)
             input_ids, segment_ids, input_mask, label_ids = batch
+            
+            print("batch label_ids: ", label_ids.shape)
 
 
-            _loss, adv_loss = model(input_ids, segment_ids, input_mask, label_ids)
-            loss = _loss + adv_loss
+            # _loss, adv_loss = model(input_ids, segment_ids, input_mask, label_ids)
+            _loss = model(input_ids, segment_ids, input_mask, label_ids)
+            loss = _loss
             loss.backward()
             
             lr_this_step = args.learning_rate * warmup_linear(global_step/t_total, args.warmup_proportion)
