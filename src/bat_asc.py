@@ -13,7 +13,7 @@ class BertForABSA(BertModel):
         self.loss_fct = torch.nn.CrossEntropyLoss()
         self.apply(self.init_bert_weights)
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, aspect_ids=None, eval_=False):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, aspect_ids=None, eval_=False, val=False):
         pooled_output, bert_emb = self.bert_forward(input_ids, token_type_ids, 
                                                         attention_mask=attention_mask, 
                                                         output_all_encoded_layers=False)
@@ -45,7 +45,11 @@ class BertForABSA(BertModel):
         
         logits = self.classifier(aspect_context_embed)
         if eval_:
-          return logits
+            if val:
+                _loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+                return _loss, logits
+            else:
+                return logits
         else:
             _loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
             # if pooled_output.requires_grad: #if training mode

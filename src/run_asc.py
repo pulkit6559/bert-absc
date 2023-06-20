@@ -121,7 +121,7 @@ def train(args):
 
     global_step = 0
     model.train()
-    for _ in range(args.num_train_epochs):
+    for epoch in range(args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
             batch = tuple(t.cuda() for t in batch)
             # batch = tuple(t for t in batch)
@@ -146,21 +146,33 @@ def train(args):
             with torch.no_grad():
                 losses=[]
                 valid_size=0
+                full_logits = []
+                full_label_ids = []
                 for step, batch in enumerate(valid_dataloader):
                     batch = tuple(t.cuda() for t in batch) # multi-gpu does scattering it-self
                     # batch = tuple(t for t in batch) # multi-gpu does scattering it-self
 
                     input_ids, segment_ids, input_mask, label_ids = batch
-                    loss = model(input_ids, segment_ids, input_mask, label_ids)
+                    loss, logits = model(input_ids, segment_ids, input_mask, label_ids, eval_=True, val=True)
                     losses.append(loss.data.item()*input_ids.size(0) )
                     valid_size+=input_ids.size(0)
+                    logits = logits.argmax(dim=1).detach().cpu().numpy()
+                    label_ids = label_ids.cpu().numpy()
+                    full_logits.extend(logits.tolist() )
+                    full_label_ids.extend(label_ids.tolist() )
+                    
                 valid_loss=sum(losses)/valid_size
                 logger.info("validation loss: %f", valid_loss)
                 valid_losses.append(valid_loss)
+                report = classification_report(full_label_ids, full_logits)
+                print(f"--------------- Validation report = Epoch {epoch} ---------------")
+                print(report)
             if valid_loss<best_valid_loss:
                 torch.save(model, os.path.join(args.output_dir, "model.pt") )
                 best_valid_loss=valid_loss
+            test(args)
             model.train()
+            
     if args.do_valid:
         with open(os.path.join(args.output_dir, "valid.json"), "w") as fw:
             json.dump({"valid_losses": valid_losses}, fw)
@@ -172,7 +184,7 @@ def test(args):  # Load a trained model that you have fine-tuned (we assume eval
     processor = data_utils.AscProcessor()
     label_list = processor.get_labels()
     tokenizer = BertTokenizer.from_pretrained(args.bert_model)
-    eval_examples = processor.get_test_examples(args.data_dir)
+    eval_examples = processor.get_test_examples(args.eval_data_dir)
     eval_features = data_utils.convert_examples_to_features(eval_examples, label_list, args.max_seq_length, tokenizer, "asc")
 
     logger.info("***** Running evaluation *****")
@@ -212,6 +224,7 @@ def test(args):  # Load a trained model that you have fine-tuned (we assume eval
     
 
     report = classification_report(full_label_ids, full_logits)
+    print(f"--------------- Test report - Rest ---------------")
     print(report)
 
     output_eval_json = os.path.join(args.output_dir, "predictions.json") 
@@ -230,6 +243,12 @@ def main():
                         type=str,
                         required=True,
                         help="The input data dir containing json files.")
+    
+    parser.add_argument("--eval_data_dir",
+                    default=None,
+                    type=str,
+                    required=True,
+                    help="The input data dir containing json files.")
 
     parser.add_argument("--output_dir",
                         default=None,
