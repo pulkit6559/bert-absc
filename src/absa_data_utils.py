@@ -60,11 +60,12 @@ class InputExample(object):
 class InputFeatures(object):
     """A single set of features of data."""
 
-    def __init__(self, input_ids, input_mask, segment_ids, label_id):
+    def __init__(self, input_ids, input_mask, segment_ids, label_id, aspect_id):
         self.input_ids = input_ids
         self.input_mask = input_mask
         self.segment_ids = segment_ids
         self.label_id = label_id
+        self.aspect_id = aspect_id
 
 
 class DataProcessor(object):
@@ -154,6 +155,7 @@ class AscProcessor(DataProcessor):
         examples = []
         for (i, ids) in enumerate(lines):
             guid = "%s-%s" % (set_type, ids )
+            # print(lines)
             text_a = lines[ids]['term']
             text_b = lines[ids]['sentence']
             label = lines[ids]['polarity']
@@ -164,9 +166,10 @@ class AscProcessor(DataProcessor):
 def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer, mode):
     """Loads a data file into a list of `InputBatch`s.""" #check later if we can merge this function with the SQuAD preprocessing 
     label_map = {}
+    print("label_list: ", label_list)
     for (i, label) in enumerate(label_list):
         label_map[label] = i
-
+    print("label map: ", label_map)
     features = []
     for (ex_index, example) in enumerate(examples):
         if mode!="ae":
@@ -177,6 +180,8 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
         tokens_b = None
         if example.text_b:
             tokens_b = tokenizer.tokenize(example.text_b)
+        
+
 
         if tokens_b:
             # Modifies `tokens_a` and `tokens_b` in place so that the total
@@ -190,22 +195,37 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
 
         tokens = []
         segment_ids = []
+        aspect_id = []
         tokens.append("[CLS]")
+        aspect_id.append(0)
         segment_ids.append(0)
         for token in tokens_a:
             tokens.append(token)
+            aspect_id.append(1)
+            segment_ids.append(0)
+        while len(tokens) < 10:
+            tokens.append('[PAD]')
+            aspect_id.append(0)
             segment_ids.append(0)
         tokens.append("[SEP]")
         segment_ids.append(0)
+        aspect_id.append(0)
 
         if tokens_b:
             for token in tokens_b:
                 tokens.append(token)
+                aspect_id.append(0)
                 segment_ids.append(1)
             tokens.append("[SEP]")
             segment_ids.append(1)
+            aspect_id.append(0)
+        
+        # print("tokens_a: ", tokens_a, len(tokens_a))
+        # print("tokens_b: ", tokens_b, len(tokens_b))
+        # print("tokens: ", tokens, len(tokens))
 
         input_ids = tokenizer.convert_tokens_to_ids(tokens)
+        # print("input_ids: ", input_ids, len(input_ids))
 
         # The mask has 1 for real tokens and 0 for padding tokens. Only real
         # tokens are attended to.
@@ -216,6 +236,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
             input_ids.append(0)
             input_mask.append(0)
             segment_ids.append(0)
+            aspect_id.append(0)
 
         assert len(input_ids) == max_seq_length
         assert len(input_mask) == max_seq_length
@@ -236,7 +257,8 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
                         input_ids=input_ids,
                         input_mask=input_mask,
                         segment_ids=segment_ids,
-                        label_id=label_id))
+                        label_id=label_id,
+                        aspect_id=aspect_id))
     return features
 
 
