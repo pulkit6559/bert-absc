@@ -27,6 +27,7 @@ from pytorch_pretrained_bert.optimization import BertAdam
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 from pytorch_pretrained_bert.modeling import BertPreTrainedModel, BertModel
 from transformers import AutoTokenizer, BertForTokenClassification
+from sklearn.metrics import classification_report
 # import torch
 import absa_data_utils as data_utils
 from absa_data_utils import ABSATokenizer
@@ -138,7 +139,7 @@ def train(args):
             batch = tuple(t.to(device) for t in batch)
             input_ids, segment_ids, input_mask, label_ids = batch
             
-            print("batch label_ids: ", label_ids.shape)
+            # print("batch label_ids: ", label_ids.shape)
 
 
             # _loss, adv_loss = model(input_ids, segment_ids, input_mask, label_ids)
@@ -162,7 +163,7 @@ def train(args):
                     batch = tuple(t.to(device) for t in batch) # multi-gpu does scattering it-self
                     input_ids, segment_ids, input_mask, label_ids = batch
                     loss = model(input_ids, segment_ids, input_mask, label_ids)
-                    losses.append(loss.data.item()*input_ids.size(0) )
+                    losses.append(loss.data.item()*input_ids.size(0))
                     valid_size+=input_ids.size(0)
                 valid_loss=sum(losses)/valid_size
                 logger.info("validation loss: %f", valid_loss)
@@ -181,7 +182,7 @@ def train(args):
 def test(args):  # Load a trained model that you have fine-tuned (we assume evaluate on cpu)    
     processor = data_utils.AeProcessor()
     label_list = processor.get_labels()
-    tokenizer = ABSATokenizer.from_pretrained(modelconfig.MODEL_ARCHIVE_MAP[args.bert_model])
+    tokenizer = ABSATokenizer.from_pretrained(args.bert_model)
     eval_examples = processor.get_test_examples(args.data_dir)
     eval_features = data_utils.convert_examples_to_features(eval_examples, label_list, args.max_seq_length, tokenizer, "ae")
 
@@ -208,25 +209,30 @@ def test(args):  # Load a trained model that you have fine-tuned (we assume eval
         input_ids, segment_ids, input_mask, label_ids = batch
         
         with torch.no_grad():
-            logits = model(input_ids, segment_ids, input_mask)
+            logits, labels = model(input_ids, segment_ids, input_mask, label_ids, eval_=True)
 
-        logits = logits.detach().cpu().numpy()
-        label_ids = label_ids.cpu().numpy()
+        logits = logits.argmax(dim=1).detach().cpu().numpy()
+        label_ids = labels.cpu().numpy()
+        # print(logits)
+        # print(label_ids)
 
-        full_logits.extend(logits.tolist() )
-        full_label_ids.extend(label_ids.tolist() )
+        full_logits.extend(logits.tolist())
+        full_label_ids.extend(label_ids.tolist())
 
-    output_eval_json = os.path.join(args.output_dir, "predictions.json") 
-    with open(output_eval_json, "w") as fw:
-        assert len(full_logits)==len(eval_examples)
-        #sort by original order for evaluation
-        recs={}
-        for qx, ex in enumerate(eval_examples):
-            recs[int(ex.guid.split("-")[1]) ]={"sentence": ex.text_a, "idx_map": ex.idx_map, "logit": full_logits[qx][1:]} #skip the [CLS] tag.
-        full_logits=[recs[qx]["logit"] for qx in range(len(full_logits))]
-        raw_X=[recs[qx]["sentence"] for qx in range(len(eval_examples) ) ]
-        idx_map=[recs[qx]["idx_map"] for qx in range(len(eval_examples)) ]
-        json.dump({"logits": full_logits, "raw_X": raw_X, "idx_map": idx_map}, fw)
+
+    report = classification_report(full_label_ids, full_logits)
+    print(report)
+    # output_eval_json = os.path.join(args.output_dir, "predictions.json") 
+    # with open(output_eval_json, "w") as fw:
+    #     assert len(full_logits)==len(eval_examples)
+    #     #sort by original order for evaluation
+    #     recs={}
+    #     for qx, ex in enumerate(eval_examples):
+    #         recs[int(ex.guid.split("-")[1]) ]={"sentence": ex.text_a, "idx_map": ex.idx_map, "logit": full_logits[qx][1:]} #skip the [CLS] tag.
+    #     full_logits=[recs[qx]["logit"] for qx in range(len(full_logits))]
+    #     raw_X=[recs[qx]["sentence"] for qx in range(len(eval_examples) ) ]
+    #     idx_map=[recs[qx]["idx_map"] for qx in range(len(eval_examples)) ]
+    #     json.dump({"logits": full_logits, "raw_X": raw_X, "idx_map": idx_map}, fw)
 
 def main():    
     parser = argparse.ArgumentParser()
