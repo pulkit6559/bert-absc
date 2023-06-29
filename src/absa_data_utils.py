@@ -203,7 +203,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
             tokens.append(token)
             aspect_id.append(1)
             segment_ids.append(0)
-        while len(tokens) < 10:
+        while len(tokens) < 6:
             tokens.append('[PAD]')
             aspect_id.append(0)
             segment_ids.append(0)
