@@ -17,9 +17,11 @@ class BertForABSA(BertModel):
         pooled_output, bert_emb = self.bert_forward(input_ids, token_type_ids, 
                                                         attention_mask=attention_mask, 
                                                         output_all_encoded_layers=False)
+
+        # print("Encoded layers: ", encoded_layers[-1].shape)
         # print("OUT: ", pooled_output.shape, bert_emb.shape) # torch.Size([32, 768]) torch.Size([32, 128, 768])
         
-        bert_emb = self.dropout(bert_emb)
+        # bert_emb = self.dropout(bert_emb)
         # print("input_ids: ", input_ids, input_ids.shape)
         # print("attention_mask: ", attention_mask, attention_mask.shape)
         # print("aspect_ids: ", aspect_ids, aspect_ids.shape)
@@ -29,11 +31,11 @@ class BertForABSA(BertModel):
         # aspect_len = [a.split(102, 1) for a in input_ids]
         # print(aspect_len)
         context_embed = bert_emb[:,0,:]
-        aspect_embed = bert_emb[:,1:10,:]
+        aspect_embed = bert_emb[:,1:7,:]
         # print("Aspect embed: ", aspect_embed.shape)
         # print("Context embed: ", context_embed.shape)
 
-        aspect_embed = torch.sum(aspect_embed, dim=1)
+        aspect_embed = torch.mean(aspect_embed, dim=1)
         
         # print("Aspect embed: ", aspect_embed.shape)
         # print("Context embed: ", context_embed.shape)
@@ -43,21 +45,12 @@ class BertForABSA(BertModel):
         aspect_context_embed = torch.cat((context_embed, aspect_embed), dim=1)
         # print("aspect_context_embed embed: ", aspect_context_embed.shape)
         
+        aspect_context_embed = self.dropout(aspect_context_embed)
         logits = self.classifier(aspect_context_embed)
-        if eval_:
-            if val:
-                _loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-                return _loss, logits
-            else:
-                return logits
-        else:
-            _loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-            # if pooled_output.requires_grad: #if training mode
-            #     perturbed_sentence = self.adv_attack(bert_emb, _loss)
-            #     perturbed_sentence = self.replace_cls_token(bert_emb, perturbed_sentence)
-            #     adv_loss = self.adversarial_loss(perturbed_sentence, attention_mask, labels)
-            #     return _loss, adv_loss
-            return _loss
+        # logits = self.classifier(context_embed)
+
+        _loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+        return _loss, logits
 
 
     def bert_forward(self, input_ids, token_type_ids=None, 
@@ -74,7 +67,8 @@ class BertForABSA(BertModel):
                                         extended_attention_mask, 
                                         output_all_encoded_layers=output_all_encoded_layers)
         pooled_output = self.pooler(encoded_layers[-1])
-        return pooled_output, embedding_output
+        # return pooled_output, embedding_output
+        return pooled_output, encoded_layers[-1]
 
 
     # def adv_attack(self, emb, loss):
