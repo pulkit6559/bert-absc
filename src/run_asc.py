@@ -28,6 +28,8 @@ from pytorch_pretrained_bert.modeling import BertForSequenceClassification
 from pytorch_pretrained_bert.optimization import BertAdam
 from sklearn.metrics import classification_report
 
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 import absa_data_utils as data_utils
 from absa_data_utils import ABSATokenizer
@@ -52,6 +54,11 @@ def train(args):
     # epsilon = 5.0
 
     # asc rest best values
+    all_valid_loss = []
+    all_valid_acc = []
+    all_test_loss = []
+    all_test_acc = []
+
     dropout = 0.5
     epsilon = 5.0
     processor = data_utils.AscProcessor()
@@ -129,7 +136,7 @@ def train(args):
             input_ids, segment_ids, input_mask, label_ids = batch
             # print("label_ids: ", label_ids[0], label_ids.shape)
             # print("input_ids: ", input_ids[0], input_ids.shape)
-            _loss = model(input_ids, segment_ids, input_mask, label_ids,  eval_= False)
+            _loss, logits = model(input_ids, segment_ids, input_mask, label_ids,  eval_= False)
             loss = _loss 
             
             loss.backward()
@@ -163,16 +170,43 @@ def train(args):
                     
                 valid_loss=sum(losses)/valid_size
                 logger.info("validation loss: %f", valid_loss)
+                all_valid_loss.append(valid_loss)
                 valid_losses.append(valid_loss)
                 report = classification_report(full_label_ids, full_logits)
+                report_dict = classification_report(full_label_ids, full_logits, output_dict=True)
+                all_valid_acc.append(report_dict['accuracy'])
                 print(f"--------------- Validation report = Epoch {epoch} ---------------")
                 print(report)
             if valid_loss<best_valid_loss:
                 torch.save(model, os.path.join(args.output_dir, "model.pt") )
                 best_valid_loss=valid_loss
-            test(args)
+            test_loss, test_acc = test(args, model)
+            all_test_acc.append(test_acc)
+            all_test_loss.append(test_loss)
             model.train()
-            
+  
+        print("VAL ACC: ", all_valid_acc, list(range(1,epoch+2)), all_test_acc)
+
+        sns.set_style("darkgrid")
+        plt.title("Plot Accuracy", fontsize=14)
+        sns.lineplot(x=list(range(1,epoch+2)),y=all_valid_acc, label="val (Laptop)")
+        sns.lineplot(x=list(range(1,epoch+2)),y=all_test_acc, label="test (Rest)")
+        plt.xlabel("Epochs", fontsize=10)
+        plt.ylabel("Accuracy", fontsize=10)
+        plt.legend()
+        plt.plot()
+        plt.show()
+
+        sns.set_style("darkgrid")
+        plt.title("Plot Loss", fontsize=14)
+        sns.lineplot(x=list(range(1,epoch+2)),y=all_valid_loss, label="val (Laptop)")
+        sns.lineplot(x=list(range(1,epoch+2)),y=all_test_loss, label="test (Rest)")
+        plt.xlabel("Epochs", fontsize=10)
+        plt.ylabel("Loss", fontsize=10)
+        plt.legend()
+        plt.plot()
+        plt.show()
+
     if args.do_valid:
         with open(os.path.join(args.output_dir, "valid.json"), "w") as fw:
             json.dump({"valid_losses": valid_losses}, fw)
@@ -180,7 +214,7 @@ def train(args):
         torch.save(model, os.path.join(args.output_dir, "model.pt") )
 
 
-def test(args):  # Load a trained model that you have fine-tuned (we assume evaluate on cpu)    
+def test(args, model):  # Load a trained model that you have fine-tuned (we assume evaluate on cpu)    
     processor = data_utils.AscProcessor()
     label_list = processor.get_labels()
     tokenizer = BertTokenizer.from_pretrained(args.bert_model)
@@ -201,9 +235,12 @@ def test(args):  # Load a trained model that you have fine-tuned (we assume eval
     eval_sampler = SequentialSampler(eval_data)
     eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.eval_batch_size)
 
-    model = torch.load(os.path.join(args.output_dir, "model.pt") )
+    # model = model
     model.cuda()
     model.eval()
+    
+    losses = []
+    test_size = 0
     
     full_logits=[]
     full_label_ids=[]
@@ -214,22 +251,31 @@ def test(args):  # Load a trained model that you have fine-tuned (we assume eval
         input_ids, segment_ids, input_mask, label_ids, aspect_ids = batch
         
         with torch.no_grad():
-            logits = model(input_ids, segment_ids, input_mask, aspect_ids, eval_=True)
+            loss, logits = model(input_ids, segment_ids, input_mask, label_ids, eval_=True)
+        test_size+=input_ids.size(0)
 
+        losses.append(loss.data.item()*input_ids.size(0) )
         logits = logits.argmax(dim=1).detach().cpu().numpy()
         label_ids = label_ids.cpu().numpy()
 
         full_logits.extend(logits.tolist() )
         full_label_ids.extend(label_ids.tolist() )
     
+    test_loss=sum(losses)/test_size
 
     report = classification_report(full_label_ids, full_logits)
+    report_dict = classification_report(full_label_ids, full_logits, output_dict=True)
+    
+    test_acc = report_dict['accuracy']
+
     print(f"--------------- Test report - Rest ---------------")
     print(report)
 
     output_eval_json = os.path.join(args.output_dir, "predictions.json") 
     with open(output_eval_json, "w") as fw:
         json.dump({"logits": full_logits, "label_ids": full_label_ids}, fw)
+    
+    return test_loss, test_acc
 
 
 
