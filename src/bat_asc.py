@@ -70,30 +70,3 @@ class BertForABSA(BertModel):
         # return pooled_output, embedding_output
         return pooled_output, encoded_layers[-1]
 
-
-    # def adv_attack(self, emb, loss):
-    #     loss_grad = grad(loss, emb, retain_graph=True)[0]
-    #     loss_grad_norm = torch.sqrt(torch.sum(loss_grad**2, (1,2)))
-    #     perturbed_sentence = emb + self.epsilon * (loss_grad/(loss_grad_norm.reshape(-1,1,1)))
-    #     return perturbed_sentence
-
-    # def replace_cls_token(self, emb, perturbed):
-    #     cond  = torch.zeros_like(emb)
-    #     cond[:, 0, :] = 1
-    #     perturbed_sentence = torch.where(cond.byte(), emb, perturbed)
-    #     return perturbed_sentence
-    
-    
-    # def adversarial_loss(self, perturbed, attention_mask, labels):
-    #     if attention_mask is None:
-    #         attention_mask = torch.ones_like(input_ids)
-    #     extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-    #     extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype) # fp16 compatibility
-    #     extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
-    #     encoded_layers = self.encoder(perturbed, extended_attention_mask, 
-    #                                     output_all_encoded_layers=False)
-    #     encoded_layers_last = self.pooler(encoded_layers[-1])
-    #     encoded_layers_last = self.dropout(encoded_layers_last)
-    #     logits = self.classifier(encoded_layers_last)
-    #     adv_loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-    #     return adv_loss
