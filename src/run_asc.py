@@ -18,6 +18,7 @@ import logging
 import argparse
 import random
 import json
+from copy import deepcopy
 
 import numpy as np
 import torch
@@ -111,6 +112,15 @@ def train(args):
     #<<<<< end of validation declaration
 
     model = BertForABSA.from_pretrained(args.bert_model, num_labels=len(label_list), dropout=dropout, epsilon=epsilon)
+
+    # checkpoint = torch.load(args.model_pre)
+    # state_dict = deepcopy(checkpoint)
+
+    # for key, val in checkpoint.items():
+    #     if key.startswith('classifier'):
+    #         state_dict.pop(key)
+
+    # model.load_state_dict(state_dict, strict=False)
     model.cuda()
     # Prepare optimizer
     param_optimizer = [(k, v) for k, v in model.named_parameters() if v.requires_grad==True]
@@ -189,8 +199,8 @@ def train(args):
 
         sns.set_style("darkgrid")
         plt.title("Plot Accuracy", fontsize=14)
-        sns.lineplot(x=list(range(1,epoch+2)),y=all_valid_acc, label="val (Laptop)")
-        sns.lineplot(x=list(range(1,epoch+2)),y=all_test_acc, label="test (Rest)")
+        sns.lineplot(x=list(range(1,epoch+2)),y=all_valid_acc, label="val (Rest)")
+        sns.lineplot(x=list(range(1,epoch+2)),y=all_test_acc, label="test (Laptop)")
         plt.xlabel("Epochs", fontsize=10)
         plt.ylabel("Accuracy", fontsize=10)
         plt.legend()
@@ -199,8 +209,8 @@ def train(args):
 
         sns.set_style("darkgrid")
         plt.title("Plot Loss", fontsize=14)
-        sns.lineplot(x=list(range(1,epoch+2)),y=all_valid_loss, label="val (Laptop)")
-        sns.lineplot(x=list(range(1,epoch+2)),y=all_test_loss, label="test (Rest)")
+        sns.lineplot(x=list(range(1,epoch+2)),y=all_valid_loss, label="val (Rest)")
+        sns.lineplot(x=list(range(1,epoch+2)),y=all_test_loss, label="test (Laptop)")
         plt.xlabel("Epochs", fontsize=10)
         plt.ylabel("Loss", fontsize=10)
         plt.legend()
@@ -294,6 +304,12 @@ def main():
                     default=None,
                     type=str,
                     required=True,
+                    help="The input data dir containing json files.")
+
+    parser.add_argument("--model_pre",
+                    default=None,
+                    type=str,
+                    required=False,
                     help="The input data dir containing json files.")
 
     parser.add_argument("--output_dir",
