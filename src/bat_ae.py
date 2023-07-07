@@ -17,6 +17,7 @@
 from pytorch_pretrained_bert.modeling import BertPreTrainedModel, BertModel
 import torch
 from torch.autograd import grad
+import numpy as np
 
 class BertForABSA(BertModel):
     def __init__(self, config, num_labels=3, dropout=None, epsilon=None):
@@ -32,38 +33,26 @@ class BertForABSA(BertModel):
                                                 token_type_ids, 
                                                 attention_mask, 
                                                 output_all_encoded_layers=False)
-        sequence_output = self.dropout(sequence_output)
+        # sequence_output = self.dropout(sequence_output)
+        # print("sequence_output.shape: ", sequence_output.shape)
         logits = self.classifier(sequence_output)
         loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-1)
-        _loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-        # if labels is not None:
-        #     loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-1)
-        #     _loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-        #     if sequence_output.requires_grad: #if training mode
-        #         perturbed_sentence = self.adv_attack(bert_emb, _loss, self.epsilon)
-        #         adv_loss = self.adversarial_loss(perturbed_sentence, attention_mask, labels)
-        #         return _loss, adv_loss
-        #     return _loss
-        return _loss
 
-    def adv_attack(self, emb, loss, epsilon):
-        loss_grad = grad(loss, emb, retain_graph=True)[0]
-        loss_grad_norm = torch.sqrt(torch.sum(loss_grad**2, (1,2)))
-        perturbed_sentence = emb + epsilon * (loss_grad/(loss_grad_norm.reshape(-1,1,1)))
-        return perturbed_sentence
+        labels = labels.view(-1).cpu()
+        logits = logits.view(-1, self.num_labels).cpu()
 
-    def adversarial_loss(self, perturbed, attention_mask, labels):
-        extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-        extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype) # fp16 compatibility
-        extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
-        encoded_layers = self.encoder(perturbed, extended_attention_mask, 
-                                            output_all_encoded_layers=False)
-        encoded_layers_last = encoded_layers[-1]
-        encoded_layers_last = self.dropout(encoded_layers_last)
-        logits = self.classifier(encoded_layers_last)
-        loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-1)
-        adv_loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-        return adv_loss
+        idx = np.where(labels!=-1)[0]
+        logits = logits[idx, :]
+        labels = labels[idx]
+        
+        labels, logits = labels.long().cuda(), logits.double().cuda()
+
+
+        _loss = loss_fct(logits, labels)
+
+        return _loss, logits, labels
+
+
 
     def bert_forward(self, input_ids, token_type_ids=None, 
                         attention_mask=None, output_all_encoded_layers=False):

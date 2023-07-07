@@ -134,7 +134,7 @@ def train(args):
 
     global_step = 0
     model.train()
-    for _ in range(args.num_train_epochs):
+    for epoch in range(args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
             batch = tuple(t.to(device) for t in batch)
             input_ids, segment_ids, input_mask, label_ids = batch
@@ -143,7 +143,7 @@ def train(args):
 
 
             # _loss, adv_loss = model(input_ids, segment_ids, input_mask, label_ids)
-            _loss = model(input_ids, segment_ids, input_mask, label_ids)
+            _loss, logits, labels = model(input_ids, segment_ids, input_mask, label_ids)
             loss = _loss
             loss.backward()
             
@@ -157,33 +157,51 @@ def train(args):
         if args.do_valid:
             model.eval()
             with torch.no_grad():
+                full_logits = []
+                full_label_ids = []
                 losses=[]
                 valid_size=0
                 for step, batch in enumerate(valid_dataloader):
                     batch = tuple(t.to(device) for t in batch) # multi-gpu does scattering it-self
                     input_ids, segment_ids, input_mask, label_ids = batch
-                    loss = model(input_ids, segment_ids, input_mask, label_ids)
+                    loss, logits, labels = model(input_ids, segment_ids, input_mask, label_ids)
                     losses.append(loss.data.item()*input_ids.size(0))
                     valid_size+=input_ids.size(0)
+                    print("logits: ", logits.shape)
+                    print("labels: ", labels.shape)
+                    logits = torch.flatten(logits.argmax(dim=1))
+                    labels = torch.flatten(labels)
+                    print("logits: ", logits.shape)
+                    print("labels: ", labels.shape)
+                    logits = logits.detach().cpu().numpy()
+                    labels = labels.cpu().numpy()
+                    full_logits.extend(logits.tolist() )
+                    full_label_ids.extend(labels.tolist())
+
                 valid_loss=sum(losses)/valid_size
                 logger.info("validation loss: %f", valid_loss)
                 valid_losses.append(valid_loss)
+                report = classification_report(full_label_ids, full_logits)
+                print(f"--------------- Validation report = Epoch {epoch} ---------------")
+                print(report)
+                test(args, model)
             if valid_loss<best_valid_loss:
-                torch.save(model, os.path.join(args.output_dir, "model.pt") )
+                print("SAVING best model")
+                torch.save(model.state_dict(), os.path.join(args.output_dir, "model_rest.pt") )
                 best_valid_loss=valid_loss
             model.train()
-    if args.do_valid:
-        with open(os.path.join(args.output_dir, "valid.json"), "w") as fw:
-            json.dump({"valid_losses": valid_losses}, fw)
-    else:
-        torch.save(model, os.path.join(args.output_dir, "model.pt") )
+    # if args.do_valid:
+    #     with open(os.path.join(args.output_dir, "valid.json"), "w") as fw:
+    #         json.dump({"valid_losses": valid_losses}, fw)
+    # else:
+    #     torch.save(model, os.path.join(args.output_dir, "model.pt") )
 
 
-def test(args):  # Load a trained model that you have fine-tuned (we assume evaluate on cpu)    
+def test(args, model):  # Load a trained model that you have fine-tuned (we assume evaluate on cpu)    
     processor = data_utils.AeProcessor()
     label_list = processor.get_labels()
     tokenizer = ABSATokenizer.from_pretrained(args.bert_model)
-    eval_examples = processor.get_test_examples(args.data_dir)
+    eval_examples = processor.get_test_examples(args.eval_data_dir)
     eval_features = data_utils.convert_examples_to_features(eval_examples, label_list, args.max_seq_length, tokenizer, "ae")
 
     logger.info("***** Running evaluation *****")
@@ -198,7 +216,7 @@ def test(args):  # Load a trained model that you have fine-tuned (we assume eval
     eval_sampler = SequentialSampler(eval_data)
     eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.eval_batch_size)
 
-    model = torch.load(os.path.join(args.output_dir, "model.pt") )
+    # model = torch.load(os.path.join(args.output_dir, "model.pt") )
     model.to(device)
     model.eval()
     
@@ -209,7 +227,7 @@ def test(args):  # Load a trained model that you have fine-tuned (we assume eval
         input_ids, segment_ids, input_mask, label_ids = batch
         
         with torch.no_grad():
-            logits, labels = model(input_ids, segment_ids, input_mask, label_ids, eval_=True)
+            loss, logits, labels = model(input_ids, segment_ids, input_mask, label_ids)
 
         logits = logits.argmax(dim=1).detach().cpu().numpy()
         label_ids = labels.cpu().numpy()
@@ -244,6 +262,11 @@ def main():
                         type=str,
                         required=True,
                         help="The input data dir containing json files.")
+    parser.add_argument("--eval_data_dir",
+                    default=None,
+                    type=str,
+                    required=True,
+                    help="The input data dir containing json files.")
 
     parser.add_argument("--output_dir",
                         default=None,
