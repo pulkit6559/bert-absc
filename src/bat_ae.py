@@ -34,16 +34,17 @@ class BertForABSA(BertModel):
                                                 output_all_encoded_layers=False)
         sequence_output = self.dropout(sequence_output)
         logits = self.classifier(sequence_output)
-        if labels is not None:
-            loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-1)
-            _loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-            if sequence_output.requires_grad: #if training mode
-                perturbed_sentence = self.adv_attack(bert_emb, _loss, self.epsilon)
-                adv_loss = self.adversarial_loss(perturbed_sentence, attention_mask, labels)
-                return _loss, adv_loss
-            return _loss
-        else:
-            return logits
+        loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-1)
+        _loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+        # if labels is not None:
+        #     loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-1)
+        #     _loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+        #     if sequence_output.requires_grad: #if training mode
+        #         perturbed_sentence = self.adv_attack(bert_emb, _loss, self.epsilon)
+        #         adv_loss = self.adversarial_loss(perturbed_sentence, attention_mask, labels)
+        #         return _loss, adv_loss
+        #     return _loss
+        return _loss
 
     def adv_attack(self, emb, loss, epsilon):
         loss_grad = grad(loss, emb, retain_graph=True)[0]

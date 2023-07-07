@@ -35,7 +35,7 @@ import modelconfig
 
 # from pytorch_pretrained_bert.modeling import BertPreTrainedModel, BertModel
 
-from asc_bert_pt import BertForABSA
+from bat_ae import BertForABSA
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt = '%m/%d/%Y %H:%M:%S',
